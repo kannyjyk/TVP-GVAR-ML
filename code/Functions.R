@@ -550,95 +550,121 @@ GVAR_IRF <- function(model_result, weight_matrix, weight_cb, n = 10,
               res_u = res_u, eps_all = eps_all))
 }
 
-GVAR_boot <- function(nrep = 100, dat, dat_cb, G0 = G0,
-                      F1 = F1, bt = bt, res_u = res_u, n = n,
-                      weight_matrix = weight_matrix, weight_cb = weight_cb,
-                      verbose = F, ci_level = 0.05, OIRF = F) {
+# Elimination Matrix
+Eli_Mat <- function(m) {
+  I <- diag(rep(1, m ^ 2))
+  L <- NULL
+  for (i in 1:m) {
+    L <- rbind(L, I[(m * (i - 1) + i):(m * i), ])
+  }
+  return(L)
+}
+
+# Communication Matrix
+Commu_Mat <- function(m, n) {
+  I <- diag(rep(1, m * n))
+  K <- NULL
+  for (i in 1:m) {
+    K <- rbind(K, I[seq(from = i, by = m, length.out = n), ])
+  }
+  return(K)
+}
+
+# Duplication Matrix
+Dup_Mat <- function(m) {
+  I <- diag(rep(1, m * (m + 1) / 2))
+  D <- NULL
+  for (i in 1:m) {
+    if (i > 1) {
+      for (j in 1:(i - 1)) {
+        D <- rbind(D, I[(m + m - j + 2) * (j - 1) / 2 + i - j + 1, ])
+      }
+    }
+    D <- rbind(D, I[
+      ((m + 1) * m / 2 - (m - i + 1 + 1) * (m - i + 1) / 2 + 1):((m + 1) * m / 2 - (m - i + 1) * (m - i) / 2), ])
+  }
+  return(D)
+}
+
+"%^%" = function(a, n) {
+  for (i in 1:n) {
+    if (i == 1){
+      b = a}
+    else{
+      b = a %*% b}}
+  return = b
+}
+
+IRF_CI_asym <- function(
+  dat, dat_cb,
+  panel_TVP_model, result_irf,
+  n = 10, alpha = 0.05
+) {
+  ## The Asymptotic Distributions of Impulse Response
+  ## Ljtkepohl, H. New introduction to multiple time series analysis. Berlin:
+  ## Springer, 2006. ISBN 978-3-540-26239-8.
   
   n_var <- ncol(dat) - 2
   p_cb <- ncol(dat_cb) - 2
   all_time <- unique(dat$Time)
   first_time <- all_time[1]
   all_ID <- dat[dat$Time == first_time, "ID"]
-  all_variables <- dat[dat$Time == first_time, 3:(n_var + 2)]
-  all_cb <- dat_cb[dat_cb$Time == first_time, 3:(p_cb + 2)]
-  p_all <- length(all_ID) * n_var + p_cb
+  p_all <- length(all_ID) * n_var + p_cb ## K
   
-  result_irf_boot <- array(dim = c(nrep, p_all * p_all, n))
-  result_fitted_boot <- array(dim = c(nrep, p_all, nrow(res_u)))
+  F1_t <- result_irf$F1 ## A1 = A
   
-  res_u_cen <- apply(res_u, 2, scale, scale = F, center = T)
-  invG0 <- solve(G0)
+  dim_bt <- dim(panel_TVP_model$bt)
+  n_time <- dim_bt[1] ## T
   
-  for (i in 1:nrep) {
-    rand_ind <- sample(1:nrow(res_u), replace = T)
-    res_u_boot <- res_u_cen[rand_ind, ]
-    eps_boot <- res_u_boot %*% t(invG0)
-    xt_boot <- matrix(nrow = nrow(res_u) + 1, ncol = ncol(res_u))
-    xt_all <- c(as.vector(t(as.matrix(all_variables))), unlist(all_cb))
-    xt_boot[1, ] <- xt_all
-    for (t_temp in 1:nrow(res_u)) {
-      xt_all <- F1 %*% xt_all + bt + eps_boot[t_temp, ]
-      xt_boot[t_temp + 1, ] <- xt_all
-    }
+  # invGO <- solve(result_irf$G0)
+  # res_u <- result_irf$res_u
+  # Sigma_u <- cov(res_u)
+  # P <- t(chol(Sigma_u))
+  # P_eps <- invGO %*% P ## P
+  
+  datamat <- panel_TVP_model$datamat
+  Z <- rbind(rep(1, n_time), t(datamat[-(T + 1), ])) ## Z
+  Y <- t(datamat[-1, ]) ## Y
+  sigma_eps <- (Y %*% (diag(n_time) - t(Z) %*% solve(Z %*% t(Z)) %*% Z) %*% t(Y)) / (n_time - p_all - 1) ## Sigma_u
+  P_eps <- t(chol(sigma_eps)) ## P
+  
+  H <- t(Eli_Mat(p_all)) %*% solve(
+    Eli_Mat(p_all) %*% (diag(p_all ^ 2) + Commu_Mat(p_all, p_all))
+    %*% kronecker(P_eps, diag(p_all)) %*% t(Eli_Mat(p_all))
+  ) ## H
+  
+  D_plus_K <- solve(t(Dup_Mat(p_all)) %*% Dup_Mat(p_all)) %*% t(Dup_Mat(p_all))
+  sigma_sig <- 2 * D_plus_K %*% kronecker(sigma_eps, sigma_eps) %*% t(D_plus_K) ## Sigma_sig
+  
+  gamma_inv <- solve(Z %*% t(Z) / n_time)
+  gamma_inv <- gamma_inv[-1, -1] ## Gamma_Y_inv
+  sigma_beta <- kronecker(gamma_inv, sigma_eps) ## Sigma_alpha
+  
+  irf_low_ci <- irf_up_ci <- list()
+  for (i in 1:n) {
+    G_i <- 0
+    for (m in 0:(i - 1)) {
+      G_i <- G_i + kronecker(t(F1_t) %^% (i - 1 - m), F1_t %^% m)
+    } ## G_i
     
-    dat_boot <- dat
-    dat_cb_boot <- dat_cb
-    for (j in 1:n_var) {
-      dat_boot[, j + 2] <- as.vector(xt_boot[, (1:length(all_ID)) * n_var - n_var + j])
-    }
-    dat_cb_boot[, 3:(2 + p_cb)] <- xt_boot[, (length(all_ID) * n_var + 1):p_all]
+    C_i <- kronecker(t(P_eps), diag(p_all)) %*% G_i ## C_i
     
-    tryCatch ({
-      model_boot <- GVAR_Est(dat = dat_boot, dat_cb = dat_cb_boot,
-                             weight_matrix = weight_matrix, weight_cb = weight_cb)
-    },
-    error = function(e) {
-      cat("ERROR_", conditionMessage(e), "\n")
-      i <- i - 1
-      next
-    }
-    )
+    C_bar_i <- kronecker(diag(p_all), F1_t %^% i) %*% H ## C_bar_i
     
-    para_boot <- GVAR_IRF(model_boot, weight_matrix = weight_matrix, 
-                          weight_cb = weight_cb, n = n, OIRF = OIRF)
-
-    irf_mat <- matrix(unlist(para_boot$IRF), nrow = p_all * p_all)
-    # TRUE == all(matrix(irf_mat[, 1], nrow = p_all) == para_boot$IRF[[1]])
-    result_irf_boot[i, , ] <- irf_mat
+    X <- C_i %*% sigma_beta %*% t(C_i) + C_bar_i %*% sigma_sig %*% t(C_bar_i)
     
-    for (j in 1:length(all_ID)) {
-      for (k in 1:n_var) {
-        ind_p <- (j - 1) * n_var + k
-        result_fitted_boot[i, ind_p, ] <- model_boot$gvar_coef[[j]][[k]]$fitted.values
+    half <- matrix(nrow = p_all, ncol = p_all)
+    for (I in 1:p_all) {
+      for (J in 1:p_all) {
+        half[I, J] <- qnorm(1 - alpha / 2) * 1 / sqrt(n_time) * sqrt(X[p_all * (J - 1) + I, p_all * (J - 1) + I])
       }
     }
-    for (j in 1:p_cb) {
-      ind_p <- length(all_ID) * n_var + j
-      result_fitted_boot[i, ind_p, ] <- model_boot$cb_coef[[j]]$fitted.values
-    }
     
-    if ((verbose == T) & (i %% 10 == 0)) 
-      cat("Bootstrap round ----- ", i, "\n")
+    irf_low_ci[[i]] <- result_irf$IRF[[i]] - half
+    irf_up_ci[[i]] <- result_irf$IRF[[i]] + half
   }
   
-  low_ci <- apply(result_irf_boot, 2:3, 
-                  function(x) quantile(x, probs = ci_level))
-  up_ci <- apply(result_irf_boot, 2:3, 
-                 function(x) quantile(x, probs = 1 - ci_level))
-  irf_low_ci <- irf_up_ci <- list()
-  for (j in 1:n) {
-    irf_low_ci[[j]] <- matrix(low_ci[, j], ncol = p_all)
-    irf_up_ci[[j]] <- matrix(up_ci[, j], ncol = p_all)
-  }
-  
-  low_fitted_ci <- apply(result_fitted_boot, 2:3,
-                         function(x) quantile(x, probs = ci_level))
-  up_fitted_ci <- apply(result_fitted_boot, 2:3, 
-                        function(x) quantile(x, probs = 1 - ci_level))
-  
-  return(list(irf_low_ci = irf_low_ci, irf_up_ci = irf_up_ci,
-              low_fitted_ci = low_fitted_ci, up_fitted_ci = up_fitted_ci))
+  return(list(irf_low_ci = irf_low_ci, irf_up_ci = irf_up_ci, X = X))
 }
 
 GVAR_pred <- function(model, dat, dat_cb, F1, bt, h = 10) {
@@ -713,81 +739,74 @@ TV_IRF <- function(sel_time, panel_TVP_model, result_irf, OIRF = FALSE, n = 10) 
               sel_time = sel_time))
 }
 
-GVAR_boot_TV <- function(nrep = 100, dat, dat_cb, G0 = G0, fit = fit, 
-                         result_irf_tv = result_irf_tv, n = n,
-                         weight_matrix = weight_matrix, weight_cb = weight_cb,
-                         verbose = F, ci_level = 0.05, OIRF = F) {
-  G0 = result_irf_tv$G0_t
-  F1 = result_irf_tv$F1_t
-  bt = result_irf_tv$b0_t 
-  res_u = result_irf_tv$res_u
-  sel_time = result_irf_tv$sel_time
+IRF_TV_CI_asym <- function(
+  sel_time,
+  dat, dat_cb,
+  panel_TVP_model, result_irf, result_irf_tv,
+  n = 10, alpha = 0.05
+) {
+  ## The Asymptotic Distributions of Impulse Response
+  ## Ljtkepohl, H. New introduction to multiple time series analysis. Berlin:
+  ## Springer, 2006. ISBN 978-3-540-26239-8.
   
   n_var <- ncol(dat) - 2
   p_cb <- ncol(dat_cb) - 2
   all_time <- unique(dat$Time)
   first_time <- all_time[1]
   all_ID <- dat[dat$Time == first_time, "ID"]
-  all_variables <- dat[dat$Time == first_time, 3:(n_var + 2)]
-  all_cb <- dat_cb[dat_cb$Time == first_time, 3:(p_cb + 2)]
-  p_all <- length(all_ID) * n_var + p_cb
+  p_all <- length(all_ID) * n_var + p_cb ## K
   
-  result_irf_boot <- array(dim = c(nrep, p_all * p_all, n))
-  result_fitted_boot <- array(dim = c(nrep, p_all, nrow(res_u)))
+  ind_time <- which(dat_cb$Time == sel_time) - 1
+  F1_t <- diag(panel_TVP_model$bt[ind_time, 1, ]) ## A1 = A
   
-  res_u_cen <- apply(res_u, 2, scale, scale = F, center = T)
-  invG0 <- solve(G0)
+  F1_t_inv <- diag(1 / panel_TVP_model$bt[ind_time, 1, ])
+  G0_t <- result_irf$G1 %*% F1_t_inv
+  G0_t_inv <- F1_t %*% solve(result_irf$G1)
   
-  for (i in 1:nrep) {
-    rand_ind <- sample(1:nrow(res_u), replace = T)
-    res_u_boot <- res_u_cen[rand_ind, ]
-    eps_boot <- res_u_boot %*% t(invG0)
-    xt_boot <- matrix(nrow = nrow(res_u) + 1, ncol = ncol(res_u))
-    xt_all <- c(as.vector(t(as.matrix(all_variables))), unlist(all_cb))
-    xt_boot[1, ] <- xt_all
-    xt_boot[2:nrow(xt_boot), ] <- fit + eps_boot
-    
-    dat_boot <- dat
-    dat_cb_boot <- dat_cb
-    for (j in 1:n_var) {
-      dat_boot[, j + 2] <- as.vector(xt_boot[, (1:length(all_ID)) * n_var - n_var + j])
-    }
-    dat_cb_boot[, 3:(2 + p_cb)] <- xt_boot[, (length(all_ID) * n_var + 1):p_all]
-    
-    tryCatch ({
-      model_boot <- GVAR_Est(dat = dat_boot, dat_cb = dat_cb_boot,
-                             weight_matrix = weight_matrix, weight_cb = weight_cb)
-    },
-    error = function(e) {
-      cat("ERROR_", conditionMessage(e), "\n")
-      i <- i - 1
-      next
-    }
-    )
-    result_irf <- GVAR_IRF(model_boot, weight_matrix = weight_matrix, 
-                           weight_cb = weight_cb, n = n, OIRF = OIRF)
-    panel_TVP_model <- Panel_TVP(dat = dat_boot, dat_cb = dat_cb_boot, ntot = 300, check.time = F)
-    para_boot_tv <- TV_IRF(result_irf_tv$sel_time, panel_TVP_model, result_irf)
-    
-    irf_mat <- matrix(unlist(para_boot_tv$IRF), nrow = p_all * p_all)
-    # TRUE == all(matrix(irf_mat[, 1], nrow = p_all) == para_boot$IRF[[1]])
-    result_irf_boot[i, , ] <- irf_mat
-    
-    if ((verbose == T) & (i %% 10 == 0)) 
-      cat("Bootstrap round ----- ", i, "\n")
-  }
+  dim_bt <- dim(panel_TVP_model$bt)
+  n_time <- dim_bt[1] ## T
   
-  low_ci <- apply(result_irf_boot, 2:3, 
-                  function(x) quantile(x, probs = ci_level))
-  up_ci <- apply(result_irf_boot, 2:3, 
-                 function(x) quantile(x, probs = 1 - ci_level))
+  datamat <- panel_TVP_model$datamat
+  Z <- rbind(rep(1, n_time), t(datamat[-(T + 1), ])) ## Z
+  Y <- t(datamat[-1, ]) ## Y
+  sigma_eps <- (Y %*% (diag(n_time) - t(Z) %*% solve(Z %*% t(Z)) %*% Z) %*% t(Y)) / (n_time - p_all - 1) ## Sigma_u
+  P_eps <- t(chol(sigma_eps)) ## P
+  
+  H <- t(Eli_Mat(p_all)) %*% solve(
+    Eli_Mat(p_all) %*% (diag(p_all ^ 2) + Commu_Mat(p_all, p_all))
+    %*% kronecker(P_eps, diag(p_all)) %*% t(Eli_Mat(p_all))
+  ) ## H
+
+  D_plus_K <- solve(t(Dup_Mat(p_all)) %*% Dup_Mat(p_all)) %*% t(Dup_Mat(p_all))
+  sigma_sig <- 2 * D_plus_K %*% kronecker(sigma_eps, sigma_eps) %*% t(D_plus_K) ## Sigma_sig
+  
+  gamma_inv <- solve(Z %*% t(Z) / n_time)
+  gamma_inv <- gamma_inv[-1, -1] ## Gamma_Y_inv
+  sigma_beta <- kronecker(gamma_inv, sigma_eps) ## Sigma_alpha
+  
   irf_low_ci <- irf_up_ci <- list()
-  for (j in 1:n) {
-    irf_low_ci[[j]] <- matrix(low_ci[, j], ncol = p_all)
-    irf_up_ci[[j]] <- matrix(up_ci[, j], ncol = p_all)
+  for (i in 1:n) {
+    G_i <- 0
+    for (m in 0:(i - 1)) {
+      G_i <- G_i + kronecker(t(F1_t) %^% (i - 1 - m), F1_t %^% m)
+    } ## G_i
+    
+    C_i <- kronecker(t(P_eps), diag(p_all)) %*% G_i ## C_i
+    
+    C_bar_i <- kronecker(diag(p_all), F1_t %^% i) %*% H ## C_bar_i
+    
+    X <- C_i %*% sigma_beta %*% t(C_i) + C_bar_i %*% sigma_sig %*% t(C_bar_i)
+    
+    half <- matrix(nrow = p_all, ncol = p_all)
+    for (I in 1:p_all) {
+      for (J in 1:p_all) {
+        half[I, J] <- qnorm(1 - alpha / 2) * 1 / sqrt(n_time) * sqrt(X[p_all * (J - 1) + I, p_all * (J - 1) + I])
+      }
+    }
+    
+    irf_low_ci[[i]] <- result_irf_tv$IRF[[i]] - half
+    irf_up_ci[[i]] <- result_irf_tv$IRF[[i]] + half
   }
   
-  return(list(irf_low_ci = irf_low_ci, irf_up_ci = irf_up_ci))
+  return(list(irf_low_ci = irf_low_ci, irf_up_ci = irf_up_ci, X = X))
 }
-
-
