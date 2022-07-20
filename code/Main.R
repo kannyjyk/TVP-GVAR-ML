@@ -144,13 +144,13 @@ write.csv(MSE_Methods1, file = paste0("~/GitHub/GVAR/result/", file_date, "/MSE_
 model_result <- GVAR_Est(dat = dat_train, dat_cb = dat_cb_train,
                          weight_matrix = weight_mat, weight_cb = cb_weight)
 result_irf <- GVAR_IRF(model_result, weight_matrix = weight_mat, weight_cb = cb_weight, n = 30)
-boot_ci <- GVAR_boot(nrep = 100, dat = dat_train, dat_cb = dat_cb_train,
-                     G0 = result_irf$G0, F1 = result_irf$F1, bt = result_irf$bt, 
-                     res_u = result_irf$res_u, weight_matrix = weight_mat, 
-                     weight_cb = cb_weight, n = 30, verbose = T, ci_level = 0.05)
 
-irf_low_ci <- boot_ci$irf_low_ci
-irf_up_ci <- boot_ci$irf_up_ci
+irf_ci <- IRF_CI_asym(dat = dat_train, dat_cb = dat_cb_train,
+                    panel_TVP_model, result_irf,
+                    n = 6, alpha = 0.05)
+
+irf_low_ci <- irf_ci$irf_low_ci
+irf_up_ci <- irf_ci$irf_up_ci
 gvar_irf <- result_irf$IRF
 
 save(gvar_irf, irf_low_ci, irf_up_ci, 
@@ -161,7 +161,8 @@ coef(model_result$gvar_coef[[1]]$JPN_CPI)
 gvar_irf[[1]]
 
 # A simple plot for GIRF
-var_names <- colnames(gvar_irf[[1]])
+var_names <- paste0(rep(c("JPN", "USA", "EU27"), each = 3), "-", c("CPI", "HUR", "GDP"))
+var_names <- c(var_names, "Oil")
 
 png(paste0("~/GitHub/GVAR/result/", file_date, "/GIRF_time_invariant.png"), width = 10000, height = 10000, res = 300)
 par(mfrow = c(10, 10))
@@ -180,3 +181,38 @@ for (j in 1:length(var_names)) {
 }
 dev.off()
 
+# ------------------ Time-invariant 
+
+sel_time <- "2020-07-01" # replace it with "2011-04-01" and "2007-08-01
+result_irf_tv <- TV_IRF(sel_time, panel_TVP_model, result_irf, OIRF = T, n = 6)
+
+irf_ci_tv <- IRF_TV_CI_asym(
+  sel_time = sel_time,
+  dat = dat_train, dat_cb = dat_cb_train,
+  panel_TVP_model, result_irf, result_irf_tv,
+  n = 6, alpha = 0.05
+)
+
+irf_low_ci <- irf_ci_tv$irf_low_ci
+irf_up_ci <- irf_ci_tv$irf_up_ci
+gvar_irf <- result_irf_tv$IRF
+
+# Plot
+png(paste0("~/GitHub/GVAR/result/", file_date, "/OIRF_time_variant_", sel_time, ".png"), width = 10000, height = 10000, res = 300)
+par(mfrow = c(10, 10))
+for (j in 1:length(var_names)) {
+  for (l in 1:length(var_names)) {
+    result_jl <- sapply(gvar_irf, function(x) x[j, l])
+    result_low_jl <- sapply(irf_low_ci, function(x) x[j, l])
+    result_up_jl <- sapply(irf_up_ci, function(x) x[j, l])
+    plot(result_jl, type = "l", xlab = "Time", ylab = "TV-GIRF", 
+         ylim = c(min(0, result_low_jl, result_ori_jl),
+                  max(0, result_up_jl, result_ori_jl)),
+         main = paste0(var_names[j], " ----- ", var_names[l]))
+    abline(h = 0, col = 2)
+    lines(result_up_jl, lty = 2, col = 3)
+    lines(result_low_jl, lty = 2, col = 3)
+    }
+  }
+}
+dev.off()
