@@ -182,7 +182,7 @@ for (j in 1:length(var_names)) {
 }
 dev.off()
 
-# ------------------ Time-invariant 
+# ------------------ Time-variant 
 
 sel_time <- "2020-07-01" # replace it with "2011-04-01" and "2007-08-01
 result_irf_tv <- TV_IRF(sel_time, panel_TVP_model, result_irf, OIRF = T, n = 6)
