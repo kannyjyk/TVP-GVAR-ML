@@ -616,12 +616,6 @@ IRF_CI_asym <- function(
   dim_bt <- dim(panel_TVP_model$bt)
   n_time <- dim_bt[1] ## T
   
-  # invGO <- solve(result_irf$G0)
-  # res_u <- result_irf$res_u
-  # Sigma_u <- cov(res_u)
-  # P <- t(chol(Sigma_u))
-  # P_eps <- invGO %*% P ## P
-  
   datamat <- panel_TVP_model$datamat
   Z <- rbind(rep(1, n_time), t(datamat[-(T + 1), ])) ## Z
   Y <- t(datamat[-1, ]) ## Y
