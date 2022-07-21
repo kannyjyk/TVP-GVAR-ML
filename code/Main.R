@@ -207,8 +207,8 @@ for (j in 1:length(var_names)) {
     result_low_jl <- sapply(irf_low_ci, function(x) x[j, l])
     result_up_jl <- sapply(irf_up_ci, function(x) x[j, l])
     plot(result_jl, type = "l", xlab = "Time", ylab = "TV-GIRF", 
-         ylim = c(min(0, result_low_jl, result_ori_jl),
-                  max(0, result_up_jl, result_ori_jl)),
+         ylim = c(min(0, result_low_jl, result_jl),
+                  max(0, result_up_jl, result_jl)),
          main = paste0(var_names[j], " ----- ", var_names[l]))
     abline(h = 0, col = 2)
     lines(result_up_jl, lty = 2, col = 3)
