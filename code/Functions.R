@@ -617,7 +617,7 @@ IRF_CI_asym <- function(
   n_time <- dim_bt[1] ## T
   
   datamat <- panel_TVP_model$datamat
-  Z <- rbind(rep(1, n_time), t(datamat[-(T + 1), ])) ## Z
+  Z <- rbind(rep(1, n_time), t(datamat[-(n_time + 1), ])) ## Z
   Y <- t(datamat[-1, ]) ## Y
   sigma_eps <- (Y %*% (diag(n_time) - t(Z) %*% solve(Z %*% t(Z)) %*% Z) %*% t(Y)) / (n_time - p_all - 1) ## Sigma_u
   P_eps <- t(chol(sigma_eps)) ## P
@@ -761,7 +761,7 @@ IRF_TV_CI_asym <- function(
   n_time <- dim_bt[1] ## T
   
   datamat <- panel_TVP_model$datamat
-  Z <- rbind(rep(1, n_time), t(datamat[-(T + 1), ])) ## Z
+  Z <- rbind(rep(1, n_time), t(datamat[-(n_time + 1), ])) ## Z
   Y <- t(datamat[-1, ]) ## Y
   sigma_eps <- (Y %*% (diag(n_time) - t(Z) %*% solve(Z %*% t(Z)) %*% Z) %*% t(Y)) / (n_time - p_all - 1) ## Sigma_u
   P_eps <- t(chol(sigma_eps)) ## P
