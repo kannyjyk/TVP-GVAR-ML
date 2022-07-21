@@ -143,7 +143,7 @@ write.csv(MSE_Methods1, file = paste0("~/GitHub/GVAR/result/", file_date, "/MSE_
 # ------------------ Time-invariant 
 model_result <- GVAR_Est(dat = dat_train, dat_cb = dat_cb_train,
                          weight_matrix = weight_mat, weight_cb = cb_weight)
-result_irf <- GVAR_IRF(model_result, weight_matrix = weight_mat, weight_cb = cb_weight, n = 30)
+result_irf <- GVAR_IRF(model_result, weight_matrix = weight_mat, weight_cb = cb_weight, n = 6)
 
 irf_ci <- IRF_CI_asym(dat = dat_train, dat_cb = dat_cb_train,
                     panel_TVP_model, result_irf,
