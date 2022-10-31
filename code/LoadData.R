@@ -57,19 +57,18 @@ ReadCB <- function() {
 ReadWeights <- function(rda_file = "DOT_2020Q3.rda") {
   load(rda_file)
   
-  # China, P.R.: Mainland: 924 --- United States: 111 --- European Union: 998 
   # Japan: 158 --- United States: 111 --- European Union: 998 
   weight_names <- c("JPN", "US", "EU")
   
-  us_china <- dat_result[dat_result$`Country Code` == 111 & dat_result$`Counterpart Country Code` == 158, ]
-  eu_china <- dat_result[dat_result$`Country Code` == 998 & dat_result$`Counterpart Country Code` == 158, ]
+  us_jpn <- dat_result[dat_result$`Country Code` == 111 & dat_result$`Counterpart Country Code` == 158, ]
+  eu_jpn <- dat_result[dat_result$`Country Code` == 998 & dat_result$`Counterpart Country Code` == 158, ]
   eu_us <- dat_result[dat_result$`Country Code` == 998 & dat_result$`Counterpart Country Code` == 111, ]
   
   weight_mat <- matrix(0, nrow = 3, ncol = 3)
-  weight_mat[2, 1] <- as.numeric(us_china$`2020Q3`[us_china$`Indicator Code` == "TXG_FOB_USD" & us_china$`2020Q3` != "" & us_china$`2020Q3` != "r"])
-  weight_mat[1, 2] <- as.numeric(us_china$`2020Q3`[us_china$`Indicator Code` == "TMG_CIF_USD" & us_china$`2020Q3` != "" & us_china$`2020Q3` != "r"])
-  weight_mat[3, 1] <- as.numeric(eu_china$`2020Q3`[eu_china$`Indicator Code` == "TXG_FOB_USD" & eu_china$`2020Q3` != ""])
-  weight_mat[1, 3] <- as.numeric(eu_china$`2020Q3`[eu_china$`Indicator Code` == "TMG_CIF_USD" & eu_china$`2020Q3` != ""])
+  weight_mat[2, 1] <- as.numeric(us_jpn$`2020Q3`[us_jpn$`Indicator Code` == "TXG_FOB_USD" & us_jpn$`2020Q3` != "" & us_jpn$`2020Q3` != "r"])
+  weight_mat[1, 2] <- as.numeric(us_jpn$`2020Q3`[us_jpn$`Indicator Code` == "TMG_CIF_USD" & us_jpn$`2020Q3` != "" & us_jpn$`2020Q3` != "r"])
+  weight_mat[3, 1] <- as.numeric(eu_jpn$`2020Q3`[eu_jpn$`Indicator Code` == "TXG_FOB_USD" & eu_jpn$`2020Q3` != ""])
+  weight_mat[1, 3] <- as.numeric(eu_jpn$`2020Q3`[eu_jpn$`Indicator Code` == "TMG_CIF_USD" & eu_jpn$`2020Q3` != ""])
   weight_mat[3, 2] <- as.numeric(eu_us$`2020Q3`[eu_us$`Indicator Code` == "TXG_FOB_USD" & eu_us$`2020Q3` != ""])
   weight_mat[2, 3] <- as.numeric(eu_us$`2020Q3`[eu_us$`Indicator Code` == "TMG_CIF_USD" & eu_us$`2020Q3` != ""])
   
